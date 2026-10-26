@@ -253,7 +253,10 @@ jobs:
   publish-release:
     name: Publish release
     needs: [ windows-x64, linux-x64, macos-universal ]
-    if: ${{ github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') }}
+    # Publish when the two always-available hosted platforms are green. The macOS
+    # hosted runner can be unavailable for extended periods; when it is, the
+    # release still ships Windows + Linux and the body records the missing asset.
+    if: ${{ always() && needs.windows-x64.result == 'success' && needs.linux-x64.result == 'success' && (github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -279,6 +282,11 @@ jobs:
           else
             printf 'Fuzzion-5000 %s\n' "$TAG" > release-notes.md
           fi
+
+      - name: Record unavailable macOS runner
+        if: ${{ needs.macos-universal.result != 'success' }}
+        run: |
+          printf '\n> **macOS Universal:** GitHub hosted macOS runners were unavailable during this build. This release currently ships the Windows x64 and Linux x64 packages; the macOS Universal package will be added as soon as a macOS runner can be scheduled.\n' >> release-notes.md
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
